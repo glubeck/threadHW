@@ -11,14 +11,58 @@
 #include <vector>
 
 using namespace std;
+		   
+class Number {
+
+public:
+  int num;
+  bool isStored;
+  pthread_mutex_t mutex;
+  pthread_cond_t cond;
+    
+  Number() {
+    this->num = 0;
+    this->isStored = false;
+    
+  }
+
+  int getNum();
+  void setNum(int num);
+
+};
+
+int Number::getNum() {
+
+  pthread_mutex_lock(&mutex);
+
+  while(!isStored)
+    pthread_cond_wait(&cond, &mutex);
+
+  cout << "Reading " << num << endl;
+  
+  pthread_mutex_unlock(&mutex);
+  
+  return num;
+}
+
+void Number::setNum(int num) {
+
+  pthread_mutex_lock(&mutex);
+
+  cout << "Storing " << num << endl;
+  
+  this->isStored = true;
+  this->num = num;
+
+  pthread_cond_signal(&cond);
+  pthread_mutex_unlock(&mutex);
+}
 
 // prototype for thread routine
-void* print(void*);
+void* store(void*);
+void* read(void*);
 
-// structure to hold data passed to a thread
-typedef struct thdata_ {
-    int number;
-} thdata;
+pthread_cond_t cond;
 
 int
 main(int argc, char **argv) {
@@ -42,42 +86,45 @@ main(int argc, char **argv) {
 
     // initialize random seed:
     srand(time(NULL));
-
-    // keep track of vectors
-    std::vector<pthread_t*> threads;
     
-    for (int i=0; i<num_threads; i++) {
-        // setup thread data
-        // notice how each thread needs its own memory!
-        pthread_t* thread = new pthread_t;
-        thdata* data = new thdata;
-        data->number = i+1;
+    pthread_t* thread = new pthread_t;
+    pthread_t* readThread = new pthread_t;
 
-        // create thread
-        pthread_create(thread, NULL, &print, (void *) data);
-        threads.push_back(thread);
-    }
+    Number* num = new Number();
+    
+    pthread_mutex_init(&num->mutex, NULL);
+    pthread_cond_init(&cond, NULL);
+  
+    pthread_create(thread, NULL, &store, (void *) num);
+      
+    pthread_create(readThread, NULL, &read, (void *) num);
 
-    // wait for threads to terminate.
-    for (int i=0; i<num_threads; i++) {
-        pthread_join(*threads[i], NULL);
-        delete threads[i];
-    }
+    pthread_join(*thread, NULL);
+    delete thread;    
+
+    pthread_join(*readThread, NULL);
+    delete readThread;
+    delete num;
 }
 
-void* print(void* ptr) {
-    thdata* data;
-    data = (thdata*) ptr;
+void* read(void* ptr) {
+  Number* num;
+  num = (Number*) ptr;  
 
-    // generate random number
-    float r = (float)rand()/((float)RAND_MAX/5);
-    
-    // sleep
-    sleep(r);
-    
-    cout << "Thread " << data->number << " says hello." << endl;
+  num->getNum();
 
-    delete data;
-    
-    pthread_exit(0);
+  pthread_exit(0);
+}
+
+
+void* store(void* ptr) {
+  Number* num;
+  num = (Number*) ptr;
+ 
+  // generate random number
+  int r = rand()%100+1;
+  
+  num->setNum(r);
+ 
+  pthread_exit(0);
 }
